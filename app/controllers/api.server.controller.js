@@ -9,6 +9,8 @@ var Q = require("q");
 
 var avServ = require('../services/avcloudServ.js');
 
+var initial = true;
+
 exports.parseCIA = function(req,res){
 
 	var rqstFrom = moment().subtract(7, 'days').format('DDMMMYY');
@@ -49,6 +51,12 @@ exports.parseCIA = function(req,res){
 		return parseRosterReport(res.body);
 	}).then(function(rawFlightData){
 		console.log('成功解析基本信息');
+		return  checkUpdate(rawFlightData);
+	}).then(function(newFlights){
+		console.log('成功获取需要更新的飞行任务信息');
+		if(initial){
+			avServ.insertFlights(newFlights);
+		}
 	}).catch(function(err){
 		console.log(err);
 	});
@@ -235,7 +243,7 @@ function checkUpdate(rawFlightData){
 	var endDate = moment().add(30, 'days').format('DDMMMYY');
 
 	return Q.Promise(function(resolve,reject){
-		avServ.findFlightByTime(startDate).then(function(results){
+		avServ.findFlightsByTime(startDate).then(function(results){
 			//初始化过程使用字段
 			var dateArray = [];
 			var midArray = [];
@@ -244,12 +252,18 @@ function checkUpdate(rawFlightData){
 			var existFlights = [];
 			var newFlights = [];
 
-			for(var i=0;i<results.length;i++){
-				dateArray.push(results[i].get('DutyDate'));
-				midArray.push(results[i].get('Mid'));
+			if(results.length>0){
+				for(var i=0;i<results.length;i++){
+					dateArray.push(results[i].get('DutyDate'));
+					midArray.push(results[i].get('Mid'));
+				}
 			}
+			else{
+				console.log('当前用户没有任何飞行任务信息，直接全部插入');
+			}
+
 			dateArray = _.uniq(dateArray);
-			_.map(rawData,function(elem,index,array){
+			_.map(rawFlightData,function(elem,index,array){
 				//如果找得到又一样的MID的话，则认为无需更新
 				if(_.includes(midArray,elem.Mid)){
 					existFlights.push(elem);
@@ -259,40 +273,31 @@ function checkUpdate(rawFlightData){
 				else{
 					//如果数据库中已经有需要更新航班的日期了，则说明是在原有基础上更新，需要将原有的打上"expired"标签
 					if(_.includes(dateArray,elem.DutyDate)){
-
-						avServ.findFlightBySpecificDate(elem.DutyDate).then(function(results){
-							for(var j=0;j<results.length;j++){
-								//如果是否过期字段已经被设置为“True”,则不进行操作，否则，将该日期下所有任务的过期属性设置为‘true’
-								if(!results[j].get('isExpired')){
-									results[j].set('isExpired',true);
-									results[j].save().then(function(expireResults){
-										console.log('已将' + expireResults.id + '对象作废');
-									})
+						avServ.findFlightBySpecificDate(elem.DutyDate)
+							.then(function(results){
+								for(var j=0;j<results.length;j++){
+									//如果是否过期字段已经被设置为“True”,则不进行操作，否则，将该日期下所有任务的过期属性设置为‘true’
+									if(!results[j].get('isExpired')){
+										results[j].set('isExpired',true);
+										results[j].save().then(function(expireResults){
+											console.log('已将' + expireResults.id + '对象作废');
+										})
+									}
 								}
-							}
 						})
-
-						var exporedMissionQuery = new AV.Query('Flight');
-						exporedMissionQuery.equalTo('DutyDate',elem.DutyDate);
-						exporedMissionQuery.find().then(function(results){
-							//遍历取回来的每一个飞行任务，进行分别处理
-							for(var j=0;j<results.length;j++){
-								//如果是否过期字段已经被设置为“True”,则不进行操作，否则，将该日期下所有任务的过期属性设置为‘true’
-								if(!results[j].get('isExpired')){
-									results[j].set('isExpired',true);
-									results[j].save().then(function(expireResults){
-										console.log('已将' + expireResults.id + '对象作废');
-									})
-								}
-							}
-						});
 					}
-
 					//不论是否将结果作废，都需要将数据插入数据库
 					newFlights.push(elem);
 				}
 			});
-
+			resolve(newFlights);
 		});
+	});
+};
+
+function parseCrewMember(flights){
+	return Q.Promise(function(resolve,reject){
+
+
 	});
 };

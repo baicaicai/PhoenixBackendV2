@@ -53,8 +53,10 @@ module.exports = function(){
 	require('../app/routes/index.server.route.js')(app);
 
 
+
 	//注册curd方法
 	require('../app/routes/api.server.route.js')(app);
+	require('../app/routes/getFlights.server.route.js')(app);
 	/*use express.static to handle static html page
 	 The express.static() middleware takes one argument to
 	 determine the location of the static folder. Notice how the

@@ -14,15 +14,13 @@ var _ = require('lodash');
 function initializeAVCloud(masterMode){
 
 	AV.initialize(config.avoscloudAppID, config.avoscloudAppKey,config.avoscloudMasterKey);
-	if(masterMode === true){
-		AV.useMasterKey();
-	}
+	console.log('æˆåŠŸåˆå§‹åŒ–AVCloud');
 
 };
 function findFlightByTime(startDate,endDate){
 	initializeAVCloud(true);
 	return Q.Promise(function(resolve,reject){
-		var q = new AV.query('Flight');
+		var q = new AV.Query('Flight');
 		q.greaterThanOrEqualTo('DutyDate',startDate);
 		if(endDate){
 			q.lessThan('DutyDate',endDate);
@@ -38,7 +36,7 @@ function findFlightByTime(startDate,endDate){
 }
 function insertFlights(flights){
 	initializeAVCloud(true);
-	var Flight = AV.Object.existed('Flight');
+	var Flight = AV.Object.extend('Flight');
 	var flight = new Flight();
 	_.map(flights,
 		function (elem, key, list) {
@@ -47,12 +45,9 @@ function insertFlights(flights){
 	);
 
 	return Q.Promise(function(resolve,reject){
-
 		flight.save().then(function(result){
-				console.log('ÒÑ¾­³É±¾½«'+ result.Mid +'µÄ·ÉĞĞÈÎÎñ½øĞĞÁË´æ´¢');
 				resolve(result);
 			},function(result,error){
-				console.log('MIDÎª' + result.Mid + '´æ´¢¹ı³ÌÖĞ³öÏÖ´íÎó£º' + error);
 				reject(error);
 			}
 		);
@@ -67,20 +62,19 @@ function updateFlightValue(key,value){
 	flight.set(key,value);
 	return Q.Promise(function(resolve,reject){
 		flight.save().then(function(result){
-				console.log('ÒÑ¾­³É±¾½«'+ result.Mid +'µÄ·ÉĞĞÈÎÎñ½øĞĞÁË´æ´¢');
+				console.log('ï¿½Ñ¾ï¿½ï¿½É±ï¿½ï¿½ï¿½'+ result.Mid +'ï¿½Ä·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë´æ´¢');
 				resolve(result);
 			},function(result,error){
-				console.log('MIDÎª' + result.Mid + '´æ´¢¹ı³ÌÖĞ³öÏÖ´íÎó£º' + error);
+				console.log('MIDÎª' + result.Mid + 'ï¿½æ´¢ï¿½ï¿½ï¿½ï¿½Ğ³ï¿½ï¿½Ö´ï¿½ï¿½ï¿½' + error);
 				reject(error);
 			}
 		);
 	});
 }
-
 function findFlightBySpecificDate(date){
 	initializeAVCloud(true);
 	return Q.Promise(function(resolve,reject){
-		var q = AV.Query('Flight');
+		var q = new AV.Query('Flight');
 		q.equalTo('DutyDate',date);
 		q.find().then(function(result){
 			resolve(result)
