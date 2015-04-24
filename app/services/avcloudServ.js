@@ -12,10 +12,7 @@ var _ = require('lodash');
 
 
 function initializeAVCloud(masterMode){
-
 	AV.initialize(config.avoscloudAppID, config.avoscloudAppKey,config.avoscloudMasterKey);
-	console.log('成功初始化AVCloud');
-
 };
 function findFlightByTime(startDate,endDate){
 	initializeAVCloud(true);
@@ -25,7 +22,7 @@ function findFlightByTime(startDate,endDate){
 		if(endDate){
 			q.lessThan('DutyDate',endDate);
 		}
-		q.equalTo('Cia','000058908');
+		q.equalTo('Cid','0000058908');
 		q.find().then(function(result){
 			resolve(result);
 		},
@@ -34,19 +31,26 @@ function findFlightByTime(startDate,endDate){
 		});
 	});
 }
-function insertFlights(flights){
+function insertFlights(newFlights){
 	initializeAVCloud(true);
 	var Flight = AV.Object.extend('Flight');
-	var flight = new Flight();
-	_.map(flights,
+
+	var flights = [];
+	_.map(newFlights,
 		function (elem, key, list) {
-			flight.set(key, elem);
+			var flight = new Flight();
+			_.map(elem,function(elem1,key1,list1){
+				flight.set(key1, elem1);
+			});
+			flights.push(flight);
 		}
 	);
 
+
 	return Q.Promise(function(resolve,reject){
-		flight.save().then(function(result){
+		AV.Object.saveAll(flights).then(function(result){
 				resolve(result);
+
 			},function(result,error){
 				reject(error);
 			}
@@ -62,10 +66,10 @@ function updateFlightValue(key,value){
 	flight.set(key,value);
 	return Q.Promise(function(resolve,reject){
 		flight.save().then(function(result){
-				console.log('�Ѿ��ɱ���'+ result.Mid +'�ķ�����������˴洢');
+				console.log('�Ѿ��ɱ���'+ result.Mid +'�ķ�����������˴�?');
 				resolve(result);
 			},function(result,error){
-				console.log('MIDΪ' + result.Mid + '�洢����г��ִ���' + error);
+				console.log('MIDΪ' + result.Mid + '�洢����г��ִ���?' + error);
 				reject(error);
 			}
 		);

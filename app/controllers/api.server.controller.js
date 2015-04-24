@@ -8,36 +8,33 @@ var moment = require('moment');
 var Q = require("q");
 
 var avServ = require('../services/avcloudServ.js');
-
-var initial = true;
+var initial = false;
+var rqstFrom = moment().subtract(7, 'days').format('DDMMMYY');
+var rqstTo = moment().add(30, 'days').format('DDMMMYY');
+var ciaLoginOptions = {
+	url: 'http://cia.airchina.com.cn/cia/loginHandler.do',
+	form: {
+		userId: '0000058908',
+		password: '0503'
+	}
+};
+var rosterReportOptions = {
+	url: 'http://cia.airchina.com.cn/cia/notificationAcknowledge.do',
+	headers: {
+		'Accept': '*/*',
+		'Accept-Encoding': 'gzip, deflate',
+		'Accept-Language': 'zh-CN,zh;q=0.8',
+		'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2305.2 Safari/537.36',
+		'Content-Type': 'application/x-www-form-urlencoded',
+		'DNT': '1',
+		'Cookie': ''},
+	form:{
+		rqstFrom:rqstFrom,
+		rqstTo:rqstTo
+	}
+};
 
 exports.parseCIA = function(req,res){
-
-	var rqstFrom = moment().subtract(7, 'days').format('DDMMMYY');
-	var rqstTo = moment().add(30, 'days').format('DDMMMYY');
-	var ciaLoginOptions = {
-		url: 'http://cia.airchina.com.cn/cia/loginHandler.do',
-		form: {
-			userId: '0000058908',
-			password: '0503'
-		}
-	};
-	var rosterReportOptions = {
-		url: 'http://cia.airchina.com.cn/cia/notificationAcknowledge.do',
-		headers: {
-			'Accept': '*/*',
-			'Accept-Encoding': 'gzip, deflate',
-			'Accept-Language': 'zh-CN,zh;q=0.8',
-			'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2305.2 Safari/537.36',
-			'Content-Type': 'application/x-www-form-urlencoded',
-			'DNT': '1',
-			'Cookie': ''},
-		form:{
-			rqstFrom:rqstFrom,
-			rqstTo:rqstTo
-		}
-	};
-
 	getRosterReport(ciaLoginOptions).then(function(res){
 		console.log('已成功登陆系统')
 		var rawCookie = res.headers['set-cookie'];
@@ -57,6 +54,9 @@ exports.parseCIA = function(req,res){
 		if(initial){
 			avServ.insertFlights(newFlights);
 		}
+		return parseCrewMember(newFlights);
+	}).then(function(flightsWithCrew){
+		console.log(flightsWithCrew);
 	}).catch(function(err){
 		console.log(err);
 	});
@@ -141,7 +141,7 @@ function parseRosterReport(html){
 			var rawHref = $(this).children().eq(2).children().attr('href');
 
 			if(rawHref){
-				rawHref = "http://" + rawHref;
+				rawHref = "http://cia.airchina.com.cn/cia/" + rawHref;
 			}
 			else{
 				rawHref = null;
@@ -239,8 +239,8 @@ function parseRosterReport(html){
 
 function checkUpdate(rawFlightData){
 
-	var startDate = moment().subtract(7, 'days').format('DDMMMYY');
-	var endDate = moment().add(30, 'days').format('DDMMMYY');
+	var startDate = moment().subtract(7, 'days').toDate();
+	var endDate = moment().add(30, 'days').toDate();
 
 	return Q.Promise(function(resolve,reject){
 		avServ.findFlightsByTime(startDate).then(function(results){
@@ -275,6 +275,7 @@ function checkUpdate(rawFlightData){
 					if(_.includes(dateArray,elem.DutyDate)){
 						avServ.findFlightBySpecificDate(elem.DutyDate)
 							.then(function(results){
+								console.log('MID为 ' + elem.Mid + ' 的数据进行了变更，需要进行更新！')
 								for(var j=0;j<results.length;j++){
 									//如果是否过期字段已经被设置为“True”,则不进行操作，否则，将该日期下所有任务的过期属性设置为‘true’
 									if(!results[j].get('isExpired')){
@@ -286,6 +287,9 @@ function checkUpdate(rawFlightData){
 								}
 						})
 					}
+					else{
+						console.log('MID为 ' + elem.Mid + ' 的数据不存在，需要新增！')
+					}
 					//不论是否将结果作废，都需要将数据插入数据库
 					newFlights.push(elem);
 				}
@@ -295,9 +299,63 @@ function checkUpdate(rawFlightData){
 	});
 };
 
-function parseCrewMember(flights){
+function parseCrewMember(newFlights){
+	//需要使用Promise进行进一步改写
 	return Q.Promise(function(resolve,reject){
+		var crewMemberKey = [
+			"CrewIndex",
+			"P",
+			"EmployeeNumber",
+			"EmployeeName",
+			"MailBox",
+			"CrewRank",
+			"TeamNum",
+			"Duty",
+			"Language",
+			"Qualification",
+			"SpouseNum"
+		];
 
 
+
+		_.map(newFlights,function(elem,index,array){
+
+
+			function getCrewMember = function(){
+				var deffred = Q.deffer();
+				var option ={
+					url:elem.CrewHref,
+					headers:rosterReportOptions.headers
+				};
+				request.get(option, function(err,response,body){
+					if(err){
+						deffer.reject(throw New Error(err));
+					}
+					var $ = cheerio.load(body);
+					var rawCrewMember = $('#sectorItem').children('.tableRowEven, .tableRowOdd');
+					var CrewMember = rawCrewMember.each(function(i,elem){
+						//$(this)==elem,因为需要传入一个cheerio对象，所以这样用
+						var rawMemberDetail = $(this).text().replace(/\n/g, "|").replace(/\s/g, "-").split('|');
+						//console.log(rawMemberDetail);
+						var crewMemberObject = _.zipObject(crewMemberKey,rawMemberDetail);
+						/*var memberDetail = _.chain(rawMemberDetail)
+							.map(function(elem,index,array){
+
+							})
+							.value();*/
+						return  crewMemberObject;
+					});
+					CrewMembers.push(CrewMember);
+				});
+			};
+			
+			getCrewMember.then(function(crewMember){
+				elem.CrewMembers = crewMember;
+				return elem;
+			}.catch(function(err){
+				console.log(error);
+			});
+		});
+		resolve(newFlights);
 	});
 };
