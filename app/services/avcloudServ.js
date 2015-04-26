@@ -32,9 +32,10 @@ function findFlightByTime(startDate,endDate){
 	});
 }
 function insertFlights(newFlights){
+
 	initializeAVCloud(true);
 	var Flight = AV.Object.extend('Flight');
-
+	//创建需要存储的数据数组以供后续的方法进行调用
 	var flights = [];
 	_.map(newFlights,
 		function (elem, key, list) {
@@ -46,11 +47,10 @@ function insertFlights(newFlights){
 		}
 	);
 
-
 	return Q.Promise(function(resolve,reject){
 		AV.Object.saveAll(flights).then(function(result){
+				console.log("已经成功更新"+result.length + "条数据");
 				resolve(result);
-
 			},function(result,error){
 				reject(error);
 			}
@@ -66,7 +66,7 @@ function updateFlightValue(key,value){
 	flight.set(key,value);
 	return Q.Promise(function(resolve,reject){
 		flight.save().then(function(result){
-				console.log('�Ѿ��ɱ���'+ result.Mid +'�ķ�����������˴�?');
+				console.log("已经成功更新" + result.length + "条数据");
 				resolve(result);
 			},function(result,error){
 				console.log('MIDΪ' + result.Mid + '�洢����г��ִ���?' + error);

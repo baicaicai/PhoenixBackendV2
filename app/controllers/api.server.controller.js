@@ -56,7 +56,10 @@ exports.parseCIA = function(req,res){
 		}
 		return parseCrewMember(newFlights);
 	}).then(function(flightsWithCrew){
-		console.log(flightsWithCrew);
+		console.log("成功补充空乘人员信息");
+		return updateFlights(flightsWithCrew);
+	}).then(function(flights){
+		console.log("本次查询共更新了" + flights.length +"条数据");
 	}).catch(function(err){
 		console.log(err);
 	});
@@ -301,61 +304,71 @@ function checkUpdate(rawFlightData){
 
 function parseCrewMember(newFlights){
 	//需要使用Promise进行进一步改写
-	return Q.Promise(function(resolve,reject){
-		var crewMemberKey = [
-			"CrewIndex",
-			"P",
-			"EmployeeNumber",
-			"EmployeeName",
-			"MailBox",
-			"CrewRank",
-			"TeamNum",
-			"Duty",
-			"Language",
-			"Qualification",
-			"SpouseNum"
-		];
+	return Q.Promise(function(resolve,reject) {
+		//并发处理遍历的每一个飞信任务的获取组员任务
+		//通过map返回一个promise的数组，数据中每个元素需要是该条飞行计划的机组成员
 
 
+		//通过Q.all来处理一组Promise，当每一个promise都返回的时候才进行总体返回，供上级数据使用
+		var promise = [];
 
-		_.map(newFlights,function(elem,index,array){
-
-
-			function getCrewMember = function(){
-				var deffred = Q.deffer();
-				var option ={
-					url:elem.CrewHref,
-					headers:rosterReportOptions.headers
-				};
-				request.get(option, function(err,response,body){
-					if(err){
-						deffer.reject(throw New Error(err));
-					}
-					var $ = cheerio.load(body);
-					var rawCrewMember = $('#sectorItem').children('.tableRowEven, .tableRowOdd');
-					var CrewMember = rawCrewMember.each(function(i,elem){
-						//$(this)==elem,因为需要传入一个cheerio对象，所以这样用
-						var rawMemberDetail = $(this).text().replace(/\n/g, "|").replace(/\s/g, "-").split('|');
-						//console.log(rawMemberDetail);
-						var crewMemberObject = _.zipObject(crewMemberKey,rawMemberDetail);
-						/*var memberDetail = _.chain(rawMemberDetail)
-							.map(function(elem,index,array){
-
-							})
-							.value();*/
-						return  crewMemberObject;
-					});
-					CrewMembers.push(CrewMember);
-				});
-			};
-			
-			getCrewMember.then(function(crewMember){
-				elem.CrewMembers = crewMember;
-				return elem;
-			}.catch(function(err){
-				console.log(error);
-			});
+		//遍历每一个飞行任务，调用getCrewMember方法，取得每个飞行任务的promise,并将promise存入数组
+		_.map(newFlights, function (elem, index, array) {
+				promise.push(getCrewMember(elem));
 		});
-		resolve(newFlights);
+
+		//返回所有的promise
+		resolve(Q.all(promise));
+
+	});
+
+};
+
+function getCrewMember(elem) {
+	var crewMemberKey = [
+		"CrewIndex",
+		"P",
+		"EmployeeNumber",
+		"EmployeeName",
+		"MailBox",
+		"CrewRank",
+		"TeamNum",
+		"Duty",
+		"Language",
+		"Qualification",
+		"SpouseNum"
+	];
+	var option = {
+		url: elem.CrewHref,
+		headers: rosterReportOptions.headers
+	};
+	return Q.Promise(function(resolve,reject){
+
+		request.get(option, function (err, response, body) {
+			if (err) {
+				reject(err);
+			}
+			var $ = cheerio.load(body);
+			var flightObjectArrary = [];
+			var rawCrewMember = $('#sectorItem').children('.tableRowEven, .tableRowOdd');
+			rawCrewMember.each(function (elem, index, array) {
+				//$(this)==elem,因为需要传入一个cheerio对象，所以这样用
+				var rawMemberDetail = $(this).text().replace(/\n/g, "|").replace(/\s/g, "-").split('|');
+				var crewMemberObject = _.zipObject(crewMemberKey, rawMemberDetail);
+				flightObjectArrary.push(crewMemberObject);
+			});
+			elem.CrewMembers = flightObjectArrary;
+			resolve(elem);
+		})
+	});
+};
+
+function updateFlights(flightsWithCrew){
+	return Q.Promise(function(resolve,reject){
+		avServ.insertFlights(flightsWithCrew).then(function(result){
+			resolve(result);
+		}).catch(function(err){
+			reject(err);
+		});
 	});
 };
