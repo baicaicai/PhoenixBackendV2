@@ -36,7 +36,7 @@ var rosterReportOptions = {
 
 exports.parseCIA = function(req,res){
 	getRosterReport(ciaLoginOptions).then(function(res){
-		console.log('已成功登陆系统')
+		console.log('已成功登陆系统');
 		var rawCookie = res.headers['set-cookie'];
 		var c1 = rawCookie[0].split(';')[0];
 		var c2 = rawCookie[1].split(';')[0];
@@ -60,6 +60,13 @@ exports.parseCIA = function(req,res){
 		return updateFlights(flightsWithCrew);
 	}).then(function(flights){
 		console.log("本次查询共更新了" + flights.length +"条数据");
+		var isUpdated = "";
+		flights.length >=1 ? isUpdated=true : isUpdated =false;
+		res.send({
+			status:'Success',
+			isUpdate:isUpdated,
+			updateFlights:flights
+		});
 	}).catch(function(err){
 		console.log(err);
 	});
@@ -74,7 +81,7 @@ function getRosterReport(option) {
 			resolve(res);
 		});
 	});
-};
+}
 
 function parseRosterReport(html){
 	return Q.Promise(function(resolve,reject){
@@ -238,13 +245,13 @@ function parseRosterReport(html){
 			resolve(rawFlightData);
 		}
 	});
-};
+}
 
 function checkUpdate(rawFlightData){
 
-	var startDate = moment().subtract(7, 'days').toDate();
-	var endDate = moment().add(30, 'days').toDate();
-
+	var startDate = moment().startOf('day').subtract(7, 'days').toDate();
+	var endDate = moment().startOf('day').add(30, 'days').toDate();
+	console.log(startDate);
 	return Q.Promise(function(resolve,reject){
 		avServ.findFlightsByTime(startDate).then(function(results){
 			//初始化过程使用字段
@@ -300,7 +307,7 @@ function checkUpdate(rawFlightData){
 			resolve(newFlights);
 		});
 	});
-};
+}
 
 function parseCrewMember(newFlights){
 	//需要使用Promise进行进一步改写
@@ -314,6 +321,7 @@ function parseCrewMember(newFlights){
 
 		//遍历每一个飞行任务，调用getCrewMember方法，取得每个飞行任务的promise,并将promise存入数组
 		_.map(newFlights, function (elem, index, array) {
+
 				promise.push(getCrewMember(elem));
 		});
 
@@ -322,7 +330,7 @@ function parseCrewMember(newFlights){
 
 	});
 
-};
+}
 
 function getCrewMember(elem) {
 	var crewMemberKey = [
@@ -343,25 +351,35 @@ function getCrewMember(elem) {
 		headers: rosterReportOptions.headers
 	};
 	return Q.Promise(function(resolve,reject){
-
-		request.get(option, function (err, response, body) {
-			if (err) {
-				reject(err);
-			}
-			var $ = cheerio.load(body);
-			var flightObjectArrary = [];
-			var rawCrewMember = $('#sectorItem').children('.tableRowEven, .tableRowOdd');
-			rawCrewMember.each(function (elem, index, array) {
-				//$(this)==elem,因为需要传入一个cheerio对象，所以这样用
-				var rawMemberDetail = $(this).text().replace(/\n/g, "|").replace(/\s/g, "-").split('|');
-				var crewMemberObject = _.zipObject(crewMemberKey, rawMemberDetail);
-				flightObjectArrary.push(crewMemberObject);
-			});
-			elem.CrewMembers = flightObjectArrary;
+		//判断CrewHref是否存在，如果不存在，则直接返回结果，如果存在，则获取相应的数据
+		if(elem.CrewHref){
+			request.get(option, function (err, response, body) {
+				if (err) {
+					reject(err);
+				}
+				var $ = cheerio.load(body);
+				var flightObjectArrary = [];
+				var rawCrewMember = $('#sectorItem').children('.tableRowEven, .tableRowOdd');
+				rawCrewMember.each(function (elem, index, array) {
+					//$(this)==elem,因为需要传入一个cheerio对象，所以这样用
+					var rawMemberDetail = $(this).text().replace(/\n/g, "|").replace(/\s/g, "-").split('|');
+					//删除首尾的两个空格内容
+					rawMemberDetail.shift();
+					rawMemberDetail.pop();
+					var crewMemberObject = _.zipObject(crewMemberKey, rawMemberDetail);
+					flightObjectArrary.push(crewMemberObject);
+				});
+				elem.CrewMembers = flightObjectArrary;
+				resolve(elem);
+			})
+		}
+		else{
+			elem.CrewMembers = [];
 			resolve(elem);
-		})
+		}
+
 	});
-};
+}
 
 function updateFlights(flightsWithCrew){
 	return Q.Promise(function(resolve,reject){
@@ -371,4 +389,4 @@ function updateFlights(flightsWithCrew){
 			reject(err);
 		});
 	});
-};
+}

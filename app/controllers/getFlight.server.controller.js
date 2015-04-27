@@ -26,3 +26,8 @@ exports.getFlights = function(req,res){
 
 
 };
+
+exports.savAllFlights = function(req,res){
+	"use strict";
+
+};
